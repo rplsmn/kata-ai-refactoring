@@ -7,19 +7,14 @@ source("utilitaires.R")
 
 # liste des DAS a transformer en indicatrices (0/1)
 codes_das <- read.csv(chemin_liste_diags)$das3
-
-# on construit a la main les bouts de requete pour chaque diagnostic
-# (un indicateur par DAS retenu) -- le pivot est fait par DuckDB, beaucoup
-# plus rapide que de bricoler ca dans R
-lignes_agg <- paste0(
-  "    max(CASE WHEN das3 = '", codes_das, "' THEN 1 ELSE 0 END) AS das_", codes_das,
-  collapse = ",\n")
-lignes_sel <- paste0(
-  "  coalesce(a.das_", codes_das, ", 0) AS das_", codes_das,
-  collapse = ",\n")
+liste_in <- paste0("'", codes_das, "'", collapse = ", ")
 
 con <- dbConnect(duckdb::duckdb())
 
+# DAS = comorbidites (typ_diag 3,4,5), 3 premiers caracteres CIM-10,
+# hors chapitres V,W,X,Y,Z. On laisse DuckDB faire le pivot (rapide).
+# On exclut aussi les racines de seance (90...) et de CM 28 (...),
+# non pertinentes pour une duree de sejour en hospit complete.
 requete <- paste0("
 WITH das AS (
   SELECT d.ident, upper(left(d.diag, 3)) AS das3
@@ -27,12 +22,11 @@ WITH das AS (
   WHERE d.typ_diag IN ('3','4','5')
     AND left(d.diag, 1) NOT IN ('V','W','X','Y','Z')
 ),
-agg AS (
-  SELECT ident,
-    count(*) AS nb_das,
-", lignes_agg, "
-  FROM das
-  GROUP BY ident
+burden AS (
+  SELECT ident, count(*) AS nb_das FROM das GROUP BY ident
+),
+flags AS (
+  PIVOT das ON das3 IN (", liste_in, ") USING max(1) GROUP BY ident
 )
 SELECT
   f.duree,
@@ -41,14 +35,21 @@ SELECT
   f.modeentree,
   left(f.ghm2, 5) AS racine,
   f.nbacte,
-  coalesce(a.nb_das, 0) AS nb_das,
-", lignes_sel, "
+  coalesce(b.nb_das, 0) AS nb_das,
+  fl.* EXCLUDE (ident)
 FROM read_parquet('", chemin_data, "/fixe.parquet') f
-LEFT JOIN agg a ON a.ident = f.ident
+LEFT JOIN burden b ON b.ident = f.ident
+LEFT JOIN flags fl ON fl.ident = f.ident
+WHERE left(f.ghm2, 2) NOT IN ('90','28')
 ", clause_limite)
 
 df <- dbGetQuery(con, requete)
 dbDisconnect(con, shutdown = TRUE)
+
+# les indicatrices DAS sortent du PIVOT avec des NA (sejours sans ce diag)
+# et sont nommees par le code brut -> on remet a 0 et on prefixe en das_*
+df[codes_das][is.na(df[codes_das])] <- 0
+names(df)[names(df) %in% codes_das] <- paste0("das_", codes_das)
 
 cat("donnees chargees :", nrow(df), "lignes,", ncol(df), "colonnes\n")
 
