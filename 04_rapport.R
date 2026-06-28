@@ -21,13 +21,21 @@ print(comparaison)
 write.csv(comparaison, file.path(dossier_sorties, "comparaison_modeles.csv"),
           row.names = FALSE)
 
-# importance des variables (Random Forest)
+# importance des variables (Random Forest) - top 15
 imp <- sort(modele_rf$variable.importance, decreasing = TRUE)
-print(imp)
+print(head(imp, 15))
 
 df_imp <- data.frame(variable = names(imp), importance = as.numeric(imp))
+df_imp <- head(df_imp, 15)
 p <- ggplot(df_imp, aes(x = reorder(variable, importance), y = importance)) +
   geom_col() +
   coord_flip() +
-  labs(title = "Importance des variables (Random Forest)", x = NULL)
+  labs(title = "Importance des variables (Random Forest) - top 15", x = NULL)
 ggsave(file.path(dossier_figures, "importance_rf.png"), p, width = 8, height = 5)
+
+# effet des comorbidites en regression lineaire (top 15 coefficients DAS)
+coefs <- coef(modele_lm)
+coefs_das <- coefs[grepl("^das_", names(coefs))]
+coefs_das <- sort(coefs_das, decreasing = TRUE)
+cat("\nComorbidites qui allongent le plus la duree (LM, nuits) :\n")
+print(head(coefs_das, 15))

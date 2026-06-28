@@ -26,3 +26,10 @@ p2 <- ggplot(df[df$duree > 0, ], aes(x = nb_das, y = duree)) +
   labs(title = "Duree vs nombre de comorbidites (DAS)",
        x = "nb comorbidites (DAS)", y = "duree (nuits)")
 ggsave(file.path(dossier_figures, "duree_vs_das.png"), p2, width = 8, height = 5)
+
+# duree moyenne en presence / absence de quelques comorbidites frequentes
+for (v in c("das_I10", "das_N18", "das_I50")) {
+  m1 <- mean(df$duree[df$duree > 0 & df[[v]] == 1])
+  m0 <- mean(df$duree[df$duree > 0 & df[[v]] == 0])
+  cat(v, ": presence =", round(m1, 2), " absence =", round(m0, 2), "\n")
+}
