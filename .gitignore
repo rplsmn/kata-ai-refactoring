@@ -1,3 +1,5 @@
 raw-data/
 sorties/
 figures/
+.Renviron
+.Rproj
